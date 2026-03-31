@@ -49,6 +49,19 @@ _SYSTEM_PROMPT = (
     "new, a confirmation that everything is normal, or essentially empty."
 )
 
+_TOOL_CHOICE_ERROR_MARKERS = (
+    "tool_choice",
+    "toolchoice",
+    "does not support",
+    'should be ["none", "auto"]',
+)
+
+
+def _is_tool_choice_unsupported(content: str | None) -> bool:
+    """Detect provider errors caused by forced tool_choice being unsupported."""
+    text = (content or "").lower()
+    return any(m in text for m in _TOOL_CHOICE_ERROR_MARKERS)
+
 
 async def evaluate_response(
     response: str,
@@ -63,21 +76,37 @@ async def evaluate_response(
     that important messages are never silently dropped.
     """
     try:
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": (
+                f"## Original task\n{task_context}\n\n"
+                f"## Agent response\n{response}"
+            )},
+        ]
+        forced = {"type": "function", "function": {"name": "evaluate_notification"}}
         llm_response = await provider.chat_with_retry(
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": (
-                    f"## Original task\n{task_context}\n\n"
-                    f"## Agent response\n{response}"
-                )},
-            ],
+            messages=messages,
             tools=_EVALUATE_TOOL,
             model=model,
             max_tokens=256,
             temperature=0.0,
             reasoning_effort=None,
-            tool_choice="required",
+            tool_choice=forced,
         )
+
+        if llm_response.finish_reason == "error" and _is_tool_choice_unsupported(
+            llm_response.content
+        ):
+            logger.warning("evaluate_response: forced tool_choice unsupported, retrying with auto")
+            llm_response = await provider.chat_with_retry(
+                messages=messages,
+                tools=_EVALUATE_TOOL,
+                model=model,
+                max_tokens=256,
+                temperature=0.0,
+                reasoning_effort=None,
+                tool_choice="auto",
+            )
 
         if not llm_response.has_tool_calls:
             logger.warning("evaluate_response: no tool call returned, defaulting to notify")
