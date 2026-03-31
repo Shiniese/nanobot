@@ -114,31 +114,44 @@ class SkillsLoader:
         skill content using read_file when needed.
 
         Returns:
-            XML-formatted skills summary.
+            Markdown-formatted skills summary table.
         """
         all_skills = self.list_skills(filter_unavailable=False)
         if not all_skills:
             return ""
 
-        lines: list[str] = ["<skills>"]
-        for entry in all_skills:
-            skill_name = entry["name"]
-            meta = self._get_skill_meta(skill_name)
-            available = self._check_requirements(meta)
-            lines.extend(
-                [
-                    f'  <skill available="{str(available).lower()}">',
-                    f"    <name>{_escape_xml(skill_name)}</name>",
-                    f"    <description>{_escape_xml(self._get_skill_description(skill_name))}</description>",
-                    f"    <location>{entry['path']}</location>",
-                ]
-            )
+        # Clean the string to prevent pipe characters or line breaks from disrupting the Markdown table structure
+        def clean_md(s: str) -> str:
+            if not s:
+                return ""
+            return str(s).replace("|", "\\|").replace("\n", " ").strip()
+
+        # Initialize the table headers
+        lines = [
+            "| Name | Description | Location | Available | Requires |",
+            "|---|---|---|---|---|"
+        ]
+
+        for s in all_skills:
+            name = clean_md(s["name"])
+            path = clean_md(s["path"])
+            desc = clean_md(self._get_skill_description(s["name"]))
+            skill_meta = self._get_skill_meta(s["name"])
+            available = self._check_requirements(skill_meta)
+
+            # Handle the missing dependencies
+            requires = "-"
             if not available:
-                missing = self._get_missing_requirements(meta)
+                missing = self._get_missing_requirements(skill_meta)
                 if missing:
-                    lines.append(f"    <requires>{_escape_xml(missing)}</requires>")
-            lines.append("  </skill>")
-        lines.append("</skills>")
+                    requires = clean_md(missing)
+
+            # Format the availability status
+            status = "✅ Yes" if available else "❌ No"
+
+            # Merge table rows
+            lines.append(f"| {name} | {desc} | {path} | {status} | {requires} |")
+
         return "\n".join(lines)
 
     def _get_missing_requirements(self, skill_meta: dict) -> str:
