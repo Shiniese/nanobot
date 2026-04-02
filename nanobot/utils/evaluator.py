@@ -81,8 +81,6 @@ async def evaluate_response(
             messages=messages,
             tools=_EVALUATE_TOOL,
             model=model,
-            max_tokens=256,
-            temperature=0.0,
             reasoning_effort=None,
             tool_choice=forced,
         )
@@ -95,8 +93,6 @@ async def evaluate_response(
                 messages=messages,
                 tools=_EVALUATE_TOOL,
                 model=model,
-                max_tokens=256,
-                temperature=0.0,
                 reasoning_effort=None,
                 tool_choice="auto",
             )
